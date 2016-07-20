@@ -1,66 +1,59 @@
 #ifndef SLIDER_H
 #define SLIDER_H
 
-#include <QWidget>
-#include <QPoint>
+#include <QAbstractSlider>
+#include <QScopedPointer>
 
-class Slider;
+#define SLIDER_MARGIN 30
 
-class Handle : public QWidget
+class SliderPrivate;
+
+class Slider : public QAbstractSlider
 {
     Q_OBJECT
 
-public:
-    explicit Handle(Slider *slider);
-    ~Handle();
-
-    inline QSize sizeHint() const Q_DECL_OVERRIDE { return QSize(16, 16); }
-
-    inline void setRelativePosition(const QPoint &pos) { setPosition(_offset + pos); }
-
-    inline void setPosition(const QPoint &pos) { _position = pos; refreshGeometry(); }
-    inline const QPoint &position() const { return _position; }
-
-    inline void setOffset(const QPoint &offset) { _offset = offset; update(); }
-    inline const QPoint &offset() const { return _offset; }
-
-    void refreshGeometry();
-
-protected:
-    void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
-    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
-    void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
-
-private:
-    Slider *const _slider;
-    QPoint        _position;
-    QPoint        _eventPos;
-    QPoint        _offset;
-};
-
-class Slider : public QWidget
-{
-    Q_OBJECT
+    Q_PROPERTY(QColor thumbColor WRITE setThumbColor READ thumbColor)
+    Q_PROPERTY(QColor trackColor WRITE setTrackColor READ trackColor)
+    Q_PROPERTY(QColor disabledColor WRITE setDisabledColor READ disabledColor)
 
 public:
     explicit Slider(QWidget *parent = 0);
     ~Slider();
 
-    inline void setOrientation(Qt::Orientation orientation) { _orientation = orientation; }
-    inline Qt::Orientation orientation() const { return _orientation; }
+    void setUseThemeColors(bool value);
+    bool useThemeColors() const;
+
+    void setThumbColor(const QColor &color);
+    QColor thumbColor() const;
+
+    void setTrackColor(const QColor &color);
+    QColor trackColor() const;
+
+    void setDisabledColor(const QColor &color);
+    QColor disabledColor() const;
+
+    QSize minimumSizeHint() const Q_DECL_OVERRIDE;
+
+    int thumbOffset() const;
+
+    void setPageStepMode(bool pageStep);
+    bool pageStepMode() const;
+
+    bool hovered() const;
 
 protected:
+    void sliderChange(SliderChange change) Q_DECL_OVERRIDE;
     void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
-    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
     void mouseMoveEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
-    void resizeEvent(QResizeEvent *event) Q_DECL_OVERRIDE;
+    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void mouseReleaseEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void leaveEvent(QEvent *event) Q_DECL_OVERRIDE;
+
+    const QScopedPointer<SliderPrivate> d_ptr;
 
 private:
-    inline bool isOnTrack(int p, int x) const { return (p >= x-2 && p <= x+2); }
-
-    bool            _drag;
-    Handle   *const _handle;
-    Qt::Orientation _orientation;
+    Q_DISABLE_COPY(Slider)
+    Q_DECLARE_PRIVATE(Slider)
 };
 
 #endif // SLIDER_H

@@ -1,10 +1,11 @@
+#include "rippleoverlay.h"
 #include <QDebug>
 #include <QPainter>
-#include "rippleoverlay.h"
 #include "ripple.h"
 
 RippleOverlay::RippleOverlay(QWidget *parent)
-    : QWidget(parent)
+    : QWidget(parent),
+      useClip(false)
 {
     setAttribute(Qt::WA_TransparentForMouseEvents);
     setAttribute(Qt::WA_NoSystemBackground);
@@ -16,12 +17,24 @@ RippleOverlay::~RippleOverlay()
 
 void RippleOverlay::addRipple(const QPoint &position, qreal radius)
 {
-    Ripple *ripple = new Ripple(position);
+    Ripple *ripple = new Ripple(position, this);
     ripple->setRadiusEndValue(radius);
+    addRipple(ripple);
+}
+
+void RippleOverlay::addRipple(Ripple *ripple)
+{
+    ripple->setOverlay(this);
     ripples.push_back(ripple);
-    connect(ripple, SIGNAL(valueChanged()), this, SLOT(update()));
     connect(ripple, SIGNAL(finished()), this, SLOT(deleteRipple()));
     ripple->startAnimation();
+}
+
+void RippleOverlay::setColor(const QColor &color)
+{
+    QList<Ripple *>::const_iterator i;
+    for (i = ripples.begin(); i != ripples.end(); ++i)
+        (*i)->setColor(color);
 }
 
 void RippleOverlay::paintEvent(QPaintEvent *event)
@@ -30,11 +43,11 @@ void RippleOverlay::paintEvent(QPaintEvent *event)
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
 
-    QBrush brush;
-    brush.setColor(Qt::black);
-    brush.setStyle(Qt::SolidPattern);
-    painter.setBrush(brush);
+    if (useClip) {
+        painter.setClipPath(clipPath);
+    }
 
     QList<Ripple *>::const_iterator i;
     for (i = ripples.begin(); i != ripples.end(); ++i)
@@ -43,6 +56,7 @@ void RippleOverlay::paintEvent(QPaintEvent *event)
         const qreal radius = ripple->radius();
         const QPointF &center = ripple->center();
         painter.setOpacity(ripple->opacity());
+        painter.setBrush(ripple->brush());
         painter.drawEllipse(center, radius, radius);
     }
 
@@ -60,7 +74,7 @@ void RippleOverlay::paintEvent(QPaintEvent *event)
 void RippleOverlay::deleteRipple()
 {
     if (ripples.isEmpty()) {
-        qWarning() << "RippleOverlay::deleteRipple was called when no active ripple.";
+        qWarning() << "RippleOverlay::deleteRipple was called when no ripples were active.";
         return;
     }
     ripples.takeFirst()->deleteLater();

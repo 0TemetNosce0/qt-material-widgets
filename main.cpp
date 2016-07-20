@@ -6,7 +6,9 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
-    //a.setStyle(new Style);
+    //QFontDatabase db;
+    //QFont font(db.font("Roboto", "Regular", 11));
+    //a.setFont(font);
 
     MainWindow w;
     w.show();

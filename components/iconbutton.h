@@ -2,9 +2,8 @@
 #define ICONBUTTON_H
 
 #include <QAbstractButton>
-#include <QStyleOptionButton>
 
-class RippleOverlay;
+class IconButtonPrivate;
 
 class IconButton : public QAbstractButton
 {
@@ -15,21 +14,17 @@ public:
     ~IconButton();
 
     QSize sizeHint() const Q_DECL_OVERRIDE;
-    void setGeometryWidget(QWidget *widget);
 
 protected:
-    void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
-    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
     bool event(QEvent *event) Q_DECL_OVERRIDE;
-    bool eventFilter(QObject *obj, QEvent *event) Q_DECL_OVERRIDE;
+    void mousePressEvent(QMouseEvent *event) Q_DECL_OVERRIDE;
+    void paintEvent(QPaintEvent *event) Q_DECL_OVERRIDE;
 
-    QStyleOptionButton getStyleOption() const;
+    const QScopedPointer<IconButtonPrivate> d_ptr;
 
 private:
-    void updateOverlayGeometry();
-
-    RippleOverlay *const _overlay;
-    QWidget       *_geometryWidget;
+    Q_DISABLE_COPY(IconButton)
+    Q_DECLARE_PRIVATE(IconButton)
 };
 
 #endif // ICONBUTTON_H

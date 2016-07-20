@@ -1,26 +1,32 @@
-#include <QStylePainter>
-#include <QStyleOptionButton>
-#include <QApplication>
-#include <QEvent>
-#include <QDebug>
 #include "iconbutton.h"
-#include "../lib/rippleoverlay.h"
-#include "style.h"
+#include "iconbutton_p.h"
+#include <QPainter>
+#include <QEvent>
+#include "lib/style.h"
+#include "lib/rippleoverlay.h"
 
-IconButton::IconButton(const QIcon &icon, QWidget *parent)
-    : QAbstractButton(parent),
-      _overlay(new RippleOverlay(parent)),
-      _geometryWidget(0)
+IconButtonPrivate::IconButtonPrivate(IconButton *q)
+    : q_ptr(q),
+      ripple(new RippleOverlay(q->parentWidget()))
 {
-    setIcon(icon);
+}
+
+void IconButtonPrivate::init()
+{
+    Q_Q(IconButton);
 
     QSizePolicy policy;
     policy.setWidthForHeight(true);
-    setSizePolicy(policy);
+    q->setSizePolicy(policy);
+}
 
-    setGeometryWidget(this);
+IconButton::IconButton(const QIcon &icon, QWidget *parent)
+    : QAbstractButton(parent),
+      d_ptr(new IconButtonPrivate(this))
+{
+    d_func()->init();
 
-    setStyle(&Style::instance());
+    setIcon(icon);
 }
 
 IconButton::~IconButton()
@@ -29,81 +35,55 @@ IconButton::~IconButton()
 
 QSize IconButton::sizeHint() const
 {
-    QStyleOptionButton option(getStyleOption());
-
-    int w = option.iconSize.width() + 4;
-    int h = option.iconSize.height();
-
-    return (style()->sizeFromContents(QStyle::CT_PushButton, &option, QSize(w, h), this).
-            expandedTo(QApplication::globalStrut()));
+    return iconSize();
 }
 
-void IconButton::setGeometryWidget(QWidget *widget)
+bool IconButton::event(QEvent *event)
 {
-    if (_geometryWidget) {
-        _geometryWidget->removeEventFilter(this);
+    Q_D(IconButton);
+
+    switch (event->type())
+    {
+    case QEvent::Resize:
+    case QEvent::Move: {
+        const int s = iconSize().width()/2;
+        d->ripple->setGeometry(geometry().adjusted(-s, -s, s, s));
+        break;
     }
-    _geometryWidget = widget;
-    widget->installEventFilter(this);
-    updateOverlayGeometry();
+    case QEvent::ParentChange: {
+        QWidget *widget;
+        if ((widget = parentWidget())) {
+            d->ripple->setParent(widget);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return QAbstractButton::event(event);
+}
+
+void IconButton::mousePressEvent(QMouseEvent *event)
+{
+    Q_D(IconButton);
+
+    const QPoint p(d->ripple->width(), d->ripple->height());
+    d->ripple->addRipple(p/2, iconSize().width());
+
+    emit clicked();
+
+    QAbstractButton::mousePressEvent(event);
 }
 
 void IconButton::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event)
 
-    QStylePainter painter(this);
-    QStyleOptionButton option(getStyleOption());
-    painter.drawControl(QStyle::CE_PushButton, option);
-}
+    QPainter painter(this);
 
-void IconButton::mousePressEvent(QMouseEvent *event)
-{
-    Q_UNUSED(event)
-
-    if (!_overlay)
-        return;
-
-    QPoint p(_overlay->width(), _overlay->height());
-    _overlay->addRipple(p/2, iconSize().width());
-
-    emit clicked();
-}
-
-bool IconButton::event(QEvent *event)
-{
-    if (QEvent::ParentChange == event->type() && parentWidget()) {
-        _overlay->setParent(parentWidget());
-    }
-    return QAbstractButton::event(event);
-}
-
-bool IconButton::eventFilter(QObject *obj, QEvent *event)
-{
-    const QEvent::Type type = event->type();
-    if (QEvent::Resize == type || QEvent::Move == type) {
-        updateOverlayGeometry();
-    }
-    return QAbstractButton::eventFilter(obj, event);
-}
-
-QStyleOptionButton IconButton::getStyleOption() const
-{
-    QStyleOptionButton option;
-    option.initFrom(this);
-    option.features = QStyleOptionButton::Flat;
-    if (isChecked())
-        option.state |= QStyle::State_On;
-    option.icon = icon();
-    option.iconSize = iconSize();
-    return option;
-}
-
-void IconButton::updateOverlayGeometry()
-{
-    if (!_overlay || !_geometryWidget)
-        return;
-
-    const int s = iconSize().width()/2;
-    _overlay->setGeometry(_geometryWidget->geometry().adjusted(-s, -s, s, s));
+    const QSize &size = iconSize();
+    QPoint pos(width()/2-size.width()/2, height()/2-size.height()/2);
+    icon().paint(&painter, QRect(pos, size), Qt::AlignCenter,
+        isEnabled() ? QIcon::Normal
+                    : QIcon::Disabled);
 }

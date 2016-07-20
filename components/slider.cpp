@@ -1,123 +1,368 @@
-#include <QPainter>
-#include <QDebug>
-#include <QMouseEvent>
 #include "slider.h"
+#include "slider_p.h"
+#include <QPainter>
+#include <QPropertyAnimation>
+#include <QStringBuilder>
+#include <QMouseEvent>
+#include <QApplication>
 
-Handle::Handle(Slider *slider)
-    : QWidget(slider),
-      _slider(slider)
+SliderPrivate::SliderPrivate(Slider *q)
+    : q_ptr(q),
+      thumb(new SliderThumb(q)),
+      track(new SliderTrack(q)),
+      machine(0),
+      hoverTrack(false),
+      hoverThumb(false),
+      hover(false),
+      step(false),
+      pageStepMode(true),
+      stepTo(0),
+      oldValue(0),
+      trackWidth(2),
+      useThemeColors(true)
 {
 }
 
-Handle::~Handle()
+void SliderPrivate::init()
 {
+    Q_Q(Slider);
+
+    machine = new SliderStateMachine(q, thumb, track);
+
+    oldValue = q->value();
+
+    q->setMouseTracking(true);
+    q->setFocusPolicy(Qt::StrongFocus);
+    q->setPageStep(1);
+
+    QSizePolicy sp(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    if (q->orientation() == Qt::Vertical)
+        sp.transpose();
+    q->setSizePolicy(sp);
+    q->setAttribute(Qt::WA_WState_OwnSizePolicy, false);
+
+    machine->start();
+
+    QCoreApplication::processEvents();
 }
 
-void Handle::refreshGeometry()
+QRectF SliderPrivate::trackBoundingRect() const
 {
-    QWidget *container = parentWidget();
-    const QSize s = sizeHint();
+    Q_Q(const Slider);
 
-    setGeometry(QRect(_slider->orientation() == Qt::Horizontal
-        ? QPoint(qBound(0, _position.x(), container->width()-s.width()), container->height()/2-s.height()/2)
-        : QPoint(container->width()/2-s.width()/2, qBound(0, _position.y(), container->height()-s.height())), s));
+    qreal hw = static_cast<qreal>(trackWidth)/2;
 
-    update();
+    return Qt::Horizontal == q->orientation()
+        ? QRectF(SLIDER_MARGIN, q->height()/2 - hw,
+                 q->width() - SLIDER_MARGIN*2, hw*2)
+        : QRectF(q->width()/2 - hw, SLIDER_MARGIN, hw*2,
+                 q->height() - SLIDER_MARGIN*2);
 }
 
-void Handle::paintEvent(QPaintEvent *event)
+QRectF SliderPrivate::thumbBoundingRect() const
 {
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
+    Q_Q(const Slider);
 
-//    QPen pen;
-//    pen.setColor(Qt::black);
-//    pen.setWidth(1);
-//    painter.setPen(pen);
-//    painter.drawRect(rect().adjusted(0, 0, -1, -1));
-
-    QBrush brush;
-    brush.setColor(QColor(200, 200, 200));
-    brush.setStyle(Qt::SolidPattern);
-
-    painter.setBrush(brush);
-    painter.setPen(Qt::NoPen);
-
-    painter.drawEllipse(0, 0, width(), height());
-
-    QWidget::paintEvent(event);
+    return Qt::Horizontal == q->orientation()
+        ? QRectF(q->thumbOffset(), q->height()/2 - SLIDER_MARGIN,
+                 SLIDER_MARGIN*2, SLIDER_MARGIN*2)
+        : QRectF(q->width()/2 - SLIDER_MARGIN, q->thumbOffset(),
+                 SLIDER_MARGIN*2, SLIDER_MARGIN*2);
 }
 
-void Handle::mousePressEvent(QMouseEvent *event)
+int SliderPrivate::valueFromPosition(const QPoint &pos) const
 {
-    _offset = pos() - event->globalPos();
+    Q_Q(const Slider);
+
+    int position = Qt::Horizontal == q->orientation() ? pos.x() : pos.y();
+
+    int span = Qt::Horizontal == q->orientation()
+        ? q->width() - SLIDER_MARGIN*2
+        : q->height() - SLIDER_MARGIN*2;
+
+    return Style::sliderValueFromPosition(
+                q->minimum(),
+                q->maximum(),
+                position - SLIDER_MARGIN,
+                span,
+                q->invertedAppearance());
 }
 
-void Handle::mouseMoveEvent(QMouseEvent *event)
+void SliderPrivate::setHovered(bool status)
 {
-    setRelativePosition(event->globalPos());
+    Q_Q(Slider);
+
+    if (hover != status) {
+        hover = status;
+        if (!q->hasFocus())  {
+            if (status) {
+                emit machine->noFocusMouseEnter();
+            } else {
+                emit machine->noFocusMouseLeave();
+            }
+        }
+        q->update();
+    }
 }
 
 Slider::Slider(QWidget *parent)
-    : QWidget(parent),
-      _drag(false),
-      _handle(new Handle(this)),
-      _orientation(Qt::Horizontal)
+    : QAbstractSlider(parent),
+      d_ptr(new SliderPrivate(this))
 {
+    d_func()->init();
 }
 
 Slider::~Slider()
 {
 }
 
-void Slider::paintEvent(QPaintEvent *event)
+void Slider::setUseThemeColors(bool value)
 {
-    QPainter painter(this);
+    Q_D(Slider);
 
-    const int x = width()/2;
-    const int y = height()/2;
-
-    QRect r = Qt::Vertical == _orientation
-            ? QRect(x-2, 0, 4, height())
-            : QRect(0, y-2, width(), 4);
-
-    QBrush brush;
-    brush.setStyle(Qt::SolidPattern);
-    brush.setColor(QColor(0, 0, 0));
-    painter.fillRect(r, brush);
-
-    painter.drawRect(rect().adjusted(0, 0, -1, -1));
-
-    QWidget::paintEvent(event);
+    d->useThemeColors = value;
+    d->machine->updatePalette();
 }
 
-
-void Slider::mousePressEvent(QMouseEvent *event)
+bool Slider::useThemeColors() const
 {
-    if (Qt::Horizontal == _orientation
-            ? isOnTrack(event->y(), height()/2)
-            : isOnTrack(event->x(), width()/2))
-    {
-        const QSize s = _handle->sizeHint();
-        _handle->setOffset((event->pos() - QPoint(s.width()/2, s.height()/2)) - event->globalPos());
-        _handle->setRelativePosition(event->globalPos());
-        _drag = true;
+    Q_D(const Slider);
+
+    return d->useThemeColors;
+}
+
+void Slider::setThumbColor(const QColor &color)
+{
+    Q_D(Slider);
+
+    d->thumbColor = color;
+    setUseThemeColors(false);
+}
+
+QColor Slider::thumbColor() const
+{
+    Q_D(const Slider);
+
+    if (d->useThemeColors || !d->thumbColor.isValid()) {
+        return Style::instance().themeColor("primary1");
     } else {
-        _drag = false;
+        return d->thumbColor;
     }
-    QWidget::mousePressEvent(event);
+}
+
+void Slider::setTrackColor(const QColor &color)
+{
+    Q_D(Slider);
+
+    d->trackColor = color;
+    setUseThemeColors(false);
+}
+
+QColor Slider::trackColor() const
+{
+    Q_D(const Slider);
+
+    if (d->useThemeColors || !d->trackColor.isValid()) {
+        return Style::instance().themeColor("accent3");
+    } else {
+        return d->trackColor;
+    }
+}
+
+void Slider::setDisabledColor(const QColor &color)
+{
+    Q_D(Slider);
+
+    d->disabledColor = color;
+    setUseThemeColors(false);
+}
+
+QColor Slider::disabledColor() const
+{
+    Q_D(const Slider);
+
+    if (d->useThemeColors || !d->disabledColor.isValid()) {
+        return Style::instance().themeColor("disabled");
+    } else {
+        return d->disabledColor;
+    }
+}
+
+QSize Slider::minimumSizeHint() const
+{
+    return Qt::Horizontal == orientation()
+            ? QSize(20, 34)
+            : QSize(34, 20);
+}
+
+int Slider::thumbOffset() const
+{
+    return Style::sliderPositionFromValue(
+        minimum(),
+        maximum(),
+        sliderPosition(),
+        Qt::Horizontal == orientation()
+            ? width() - SLIDER_MARGIN*2
+            : height() - SLIDER_MARGIN*2,
+        invertedAppearance());
+}
+
+void Slider::setPageStepMode(bool pageStep)
+{
+    Q_D(Slider);
+
+    d->pageStepMode = pageStep;
+}
+
+bool Slider::pageStepMode() const
+{
+    Q_D(const Slider);
+
+    return d->pageStepMode;
+}
+
+bool Slider::hovered() const
+{
+    Q_D(const Slider);
+
+    return d->hover;
+}
+
+void Slider::sliderChange(SliderChange change)
+{
+    Q_D(Slider);
+
+    if (SliderOrientationChange == change) {
+        QSizePolicy sp(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        if (orientation() == Qt::Vertical)
+            sp.transpose();
+        setSizePolicy(sp);
+    } else if (SliderValueChange == change) {
+        if (minimum() == value()) {
+            triggerAction(SliderToMinimum);
+            emit d->machine->changedToMinimum();
+        } else if (maximum() == value()) {
+            triggerAction(SliderToMaximum);
+        }
+        if (minimum() == d->oldValue) {
+            emit d->machine->changedFromMinimum();
+        }
+        d->oldValue = value();
+    }
+    QAbstractSlider::sliderChange(change);
+}
+
+void Slider::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event)
+
+#ifdef DEBUG_LAYOUT
+    QPainter painter(this);
+
+    if (hasFocus())
+        painter.drawRect(rect().adjusted(0, 0, -1, -1));
+
+    QPen pen;
+    pen.setColor(Qt::red);
+    pen.setWidth(1);
+    painter.setOpacity(1);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(rect().adjusted(0, 0, -1, -1));
+#endif
 }
 
 void Slider::mouseMoveEvent(QMouseEvent *event)
 {
-    if (_drag) {
-        _handle->setRelativePosition(event->globalPos());
+    Q_D(Slider);
+
+    if (isSliderDown())
+    {
+        setSliderPosition(d->valueFromPosition(event->pos()));
     }
-    QWidget::mouseMoveEvent(event);
+    else
+    {
+        QRectF track(d->trackBoundingRect().adjusted(-2, -2, 2, 2));
+
+        if (track.contains(event->pos()) != d->hoverTrack) {
+            d->hoverTrack = !d->hoverTrack;
+            update();
+        }
+
+        QRectF thumb(0, 0, 16, 16);
+        thumb.moveCenter(d->thumbBoundingRect().center());
+
+        if (thumb.contains(event->pos()) != d->hoverThumb) {
+            d->hoverThumb = !d->hoverThumb;
+            update();
+        }
+
+        d->setHovered(d->hoverTrack || d->hoverThumb);
+    }
+
+    QAbstractSlider::mouseMoveEvent(event);
 }
 
-void Slider::resizeEvent(QResizeEvent *event)
+void Slider::mousePressEvent(QMouseEvent *event)
 {
-    _handle->refreshGeometry();
-    QWidget::resizeEvent(event);
+    Q_D(Slider);
+
+    const QPoint pos = event->pos();
+
+    QRectF thumb(0, 0, 16, 16);
+    thumb.moveCenter(d->thumbBoundingRect().center());
+
+    if (thumb.contains(pos)) {
+        setSliderDown(true);
+        return;
+    }
+
+    if (!d->pageStepMode) {
+        setSliderPosition(d->valueFromPosition(event->pos()));
+        d->thumb->setHaloSize(0);
+        setSliderDown(true);
+        return;
+    }
+
+    d->step = true;
+    d->stepTo = d->valueFromPosition(pos);
+
+    SliderAction action = d->stepTo > sliderPosition()
+        ? SliderPageStepAdd
+        : SliderPageStepSub;
+
+    triggerAction(action);
+    setRepeatAction(action, 400, 8);
+}
+
+void Slider::mouseReleaseEvent(QMouseEvent *event)
+{
+    Q_D(Slider);
+
+    if (isSliderDown()) {
+        setSliderDown(false);
+    } else if (d->step) {
+        d->step = false;
+        setRepeatAction(SliderNoAction, 0);
+    }
+
+    QAbstractSlider::mouseReleaseEvent(event);
+}
+
+void Slider::leaveEvent(QEvent *event)
+{
+    Q_D(Slider);
+
+    if (d->hoverTrack) {
+        d->hoverTrack = false;
+        update();
+    }
+    if (d->hoverThumb) {
+        d->hoverThumb = false;
+        update();
+    }
+
+    d->setHovered(false);
+
+    QAbstractSlider::leaveEvent(event);
 }
