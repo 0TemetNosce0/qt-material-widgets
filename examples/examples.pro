@@ -20,7 +20,10 @@ SOURCES = mainwindow.cpp \
     snackbarsettingseditor.cpp \
     dialogsettingseditor.cpp \
     drawersettingseditor.cpp \
-    scrollbarsettingseditor.cpp
+    scrollbarsettingseditor.cpp \
+    appbarsettingseditor.cpp \
+    autocompletesettingseditor.cpp \
+    menusettingseditor.cpp
 HEADERS = mainwindow.h \
     avatarsettingseditor.h \
     badgesettingseditor.h \
@@ -39,7 +42,10 @@ HEADERS = mainwindow.h \
     snackbarsettingseditor.h \
     dialogsettingseditor.h \
     drawersettingseditor.h \
-    scrollbarsettingseditor.h
+    scrollbarsettingseditor.h \
+    appbarsettingseditor.h \
+    autocompletesettingseditor.h \
+    menusettingseditor.h
 LIBS += $$top_builddir/components/$(OBJECTS_DIR)/libcomponents.a
 INCLUDEPATH += $$top_srcdir/components/
 TARGET = examples-exe
@@ -65,4 +71,5 @@ FORMS += \
     tabssettingsform.ui \
     dialogsettingsform.ui \
     drawersettingsform.ui \
-    scrollbarsettingsform.ui
+    scrollbarsettingsform.ui \
+    appbarsettingsform.ui
